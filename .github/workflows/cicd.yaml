@@ -1,0 +1,112 @@
+name: CI/CD Pipeline
+
+on:
+    pull_request:
+        branches: [main, development]
+    push:
+        #TODO: remove dev branch
+        branches: [main, development]
+        # Consider how you want to handle version tags
+        tags: ['v*.*.*']
+
+permissions:
+    contents: read
+    packages: write
+    security-events: write
+
+env:
+    REGISTRY: ghcr.io
+    PYTHON_VERSION: '3.13'
+
+jobs:
+    setup:
+        runs-on: ubuntu-latest
+        outputs:
+            image_base: ${{ steps.vars.outputs.image_base }}
+            pr_tag: ${{ steps.vars.outputs.pr_tag }}
+            commit_sha: ${{ steps.vars.outputs.commit_sha }}
+            commit_sha_short: ${{ steps.vars.outputs.commit_sha_short }}
+            test_image_tag: ${{ steps.vars.outputs.test_image_tag }}
+        steps:
+            - name: Compute image vars
+              id: vars
+              shell: bash
+              run: |
+                set -euo pipefail
+                ORG="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+                REPO="$(basename "${GITHUB_REPOSITORY}")"
+                IMAGE_BASE="${REGISTRY}/${ORG}/${REPO}"
+                echo "image_base=${IMAGE_BASE}" >> "$GITHUB_OUTPUT"
+                if [ "${GITHUB_EVENT_NAME}" = "pull_request" ]; then
+                    PR_NUM="${{ github.event.pull_request.number }}"
+                    PR_TAG="pr-${PR_NUM}-build"
+                    echo "pr_tag=${PR_TAG}" >> "$GITHUB_OUTPUT"
+                    echo "test_image_tag=${PR_TAG}" >> "$GITHUB_OUTPUT"
+                fi
+                if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+                    COMMIT_SHA="${GITHUB_SHA}"
+                    SHORT_SHA="${COMMIT_SHA:0:12}"
+                    echo "commit_sha=${COMMIT_SHA}" >> "$GITHUB_OUTPUT"
+                    echo "commit_sha_short=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+                    echo "test_image_tag=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+                fi
+    build:
+        name: Build
+        if: >
+          github.event_name != 'push'
+        runs-on: ubuntu-latest
+        needs: setup
+        steps:
+          - uses: actions/checkout@v4
+          - name: Build image for scanning
+            id: build
+            uses: docker/build-push-action@v6
+            with:
+              context: .
+              file: ./Dockerfile
+              # Load the image to the local Docker daemon, but do not push it
+              load: true
+              tags: ${{ needs.setup.outputs.image_base }}:${{ needs.setup.outputs.test_image_tag }}
+
+    publish:
+        name: Build and Publish
+        if: >
+          github.event_name == 'push' && (
+            github.ref == 'refs/heads/main' ||
+            github.ref == 'refs/heads/development' ||
+            startsWith(github.ref, 'refs/tags/v')
+          )
+        runs-on: ubuntu-latest
+        # When you re-enable your other jobs: ruff-linting, unit-test. Add them to this list.
+        needs: setup
+        steps:
+          - uses: actions/checkout@v4
+          - name: Prepare image tags
+            id: prep_tags
+            run: |
+              # Always start with the unique commit SHA tag for traceability
+              TAGS="${{ needs.setup.outputs.image_base }}:${{ needs.setup.outputs.commit_sha_short }}"
+              # If it's a push to the main branch, also add the 'latest' tag
+              if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+                TAGS="$TAGS,${{ needs.setup.outputs.image_base }}:latest"
+              fi
+              # If the trigger was a version tag, add that version as a tag
+              if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+                # github.ref_name holds the tag name (e.g., "v1.0.0")
+                VERSION_TAG=${{ github.ref_name }}
+                TAGS="$TAGS,${{ needs.setup.outputs.image_base }}:${VERSION_TAG}"
+              fi
+              echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+          - name: Log in to registry
+            uses: docker/login-action@v3
+            with:
+              registry: ${{ env.REGISTRY }}
+              username: ${{ github.actor }}
+              password: ${{ secrets.GITHUB_TOKEN }}
+          - name: Build & push final image
+            uses: docker/build-push-action@v6
+            with:
+              context: .
+              file: ./Dockerfile
+              push: true
+              tags: ${{ steps.prep_tags.outputs.tags }}
