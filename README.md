@@ -1,6 +1,10 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
+**DEPRECATED:** This repository, formerly https://github.com/NOAA-OWP/hydrofabric, has been renamed to https://github.com/NOAA-OWP/hydrofabric_v2.2 and is no longer maintained. The new https://github.com/NOAA-OWP/hydrofabric is the most up to date version of the hydrofabric package.
+
+# Hydrofabric:<a href="https://github.com/NOAA-OWP/hydrofabric"><img src="man/figures/logo.png" align="right" width="25%"/></a>
+
 # Hydrofabric:<a href="https://github.com/NOAA-OWP/hydrofabric"><img src="man/figures/logo.png" align="right" width="25%"/></a>
 
 <!-- badges: start -->
