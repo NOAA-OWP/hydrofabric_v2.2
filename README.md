@@ -5,8 +5,6 @@
 
 # Hydrofabric:<a href="https://github.com/NOAA-OWP/hydrofabric"><img src="man/figures/logo.png" align="right" width="25%"/></a>
 
-# Hydrofabric:<a href="https://github.com/NOAA-OWP/hydrofabric"><img src="man/figures/logo.png" align="right" width="25%"/></a>
-
 <!-- badges: start -->
 
 [![R CMD
